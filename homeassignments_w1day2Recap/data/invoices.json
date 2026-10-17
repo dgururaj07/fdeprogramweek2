@@ -22,11 +22,5 @@
     "vendor": "DGR",
     "amount": 10000,
     "status": "unpaid"
-  },
-  {
-    "invoice_id": 111,
-    "vendor": "LIC CORPORATION",
-    "amount": 6000.0,
-    "status": "PAID"
   }
 ]
