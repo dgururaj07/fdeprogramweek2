@@ -8,7 +8,7 @@ router = APIRouter()
 
 @router.delete("/invoice/{invoice_id}")
 
-def delete_invoice(invoice_id:int);
+def delete_invoice(invoice_id:int):
     invoices = load_invoices()
 
     for index,invoice in enumerate(invoices):
