@@ -1,0 +1,444 @@
+{
+  "info": {
+    "name": "Diabetes Readmission API",
+    "description": "All endpoints of the Diabetes Readmission API.\n\nStart the API first (from the project root): uvicorn api.main:app --reload\n\nCollection variables:\n- baseUrl: where the API runs\n- encounter_id: any encounter (default is a LOW risk one with no intervention)\n- intervention_encounter_id: an encounter that HAS an intervention (a HIGH risk one). The PATCH request changes it in the database.\n\nNote: 'Get all encounters' returns ~28 MB of JSON and can take a while.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "encounter_id", "value": "2278392" },
+    { "key": "intervention_encounter_id", "value": "67162368" }
+  ],
+  "item": [
+    {
+      "name": "Encounters",
+      "item": [
+        {
+          "name": "Get all encounters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/encounters",
+              "host": ["{{baseUrl}}"],
+              "path": ["encounters"]
+            },
+            "description": "Returns every encounter (~101k rows, ~28 MB). Slow by design."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Returns a non-empty array', () => {",
+                  "  pm.expect(body).to.be.an('array');",
+                  "  pm.expect(body.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get encounter by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/encounters/{{encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["encounters", "{{encounter_id}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the requested encounter', () => {",
+                  "  pm.expect(pm.response.json().encounter_id).to.eql(parseInt(pm.collectionVariables.get('encounter_id')));",
+                  "});",
+                  "pm.test('Has risk fields', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.property('risk_score');",
+                  "  pm.expect(b.risk_level).to.be.oneOf(['LOW', 'MEDIUM', 'HIGH']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get encounter by id - not found (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/encounters/999",
+              "host": ["{{baseUrl}}"],
+              "path": ["encounters", "999"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Has a detail message', () => pm.expect(pm.response.json().detail).to.include('not found'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get encounter by id - invalid id (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/encounters/abc",
+              "host": ["{{baseUrl}}"],
+              "path": ["encounters", "abc"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Care Queue",
+      "item": [
+        {
+          "name": "Get care queue (MEDIUM + HIGH)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/care-queue",
+              "host": ["{{baseUrl}}"],
+              "path": ["care-queue"]
+            },
+            "description": "MEDIUM and HIGH risk encounters, highest risk score first."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "pm.test('Only MEDIUM and HIGH are returned', () => {",
+                  "  pm.expect(rows.length).to.be.above(0);",
+                  "  pm.expect(rows.every(r => ['MEDIUM', 'HIGH'].includes(r.risk_level))).to.be.true;",
+                  "});",
+                  "pm.test('Sorted by risk_score descending', () => {",
+                  "  pm.expect(rows.every((r, i) => i === 0 || rows[i - 1].risk_score >= r.risk_score)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get care queue - HIGH only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/care-queue/high",
+              "host": ["{{baseUrl}}"],
+              "path": ["care-queue", "high"]
+            },
+            "description": "Case-insensitive: high, High and HIGH all work."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Only HIGH is returned', () => {",
+                  "  const rows = pm.response.json();",
+                  "  pm.expect(rows.length).to.be.above(0);",
+                  "  pm.expect(rows.every(r => r.risk_level === 'HIGH')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get care queue - MEDIUM only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/care-queue/medium",
+              "host": ["{{baseUrl}}"],
+              "path": ["care-queue", "medium"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Only MEDIUM is returned', () => {",
+                  "  const rows = pm.response.json();",
+                  "  pm.expect(rows.length).to.be.above(0);",
+                  "  pm.expect(rows.every(r => r.risk_level === 'MEDIUM')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get care queue - LOW is rejected (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/care-queue/low",
+              "host": ["{{baseUrl}}"],
+              "path": ["care-queue", "low"]
+            },
+            "description": "LOW is deliberately excluded from the care queue."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message lists allowed levels', () => pm.expect(pm.response.json().detail).to.include('MEDIUM, HIGH'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Interventions",
+      "item": [
+        {
+          "name": "Update intervention",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONTACTED\",\n  \"assigned_to\": \"Care Team A\",\n  \"notes\": \"Follow-up initiated\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/interventions/{{intervention_encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["interventions", "{{intervention_encounter_id}}"]
+            },
+            "description": "Partial update: only the fields sent are changed. NOTE: this modifies the row in the database (it leaves PENDING_REVIEW)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Fields were updated', () => {",
+                  "  pm.expect(b.status).to.eql('CONTACTED');",
+                  "  pm.expect(b.assigned_to).to.eql('Care Team A');",
+                  "  pm.expect(b.notes).to.eql('Follow-up initiated');",
+                  "});",
+                  "pm.test('Belongs to the requested encounter', () => {",
+                  "  pm.expect(b.encounter_id).to.eql(parseInt(pm.collectionVariables.get('intervention_encounter_id')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update intervention - status only (partial)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"FOLLOW_UP_SCHEDULED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/interventions/{{intervention_encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["interventions", "{{intervention_encounter_id}}"]
+            },
+            "description": "Only status is sent, so assigned_to and notes keep their existing values."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Only status changed', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('FOLLOW_UP_SCHEDULED');",
+                  "  pm.expect(b.assigned_to).to.eql('Care Team A');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update intervention - no intervention row (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ASSIGNED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/interventions/{{encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["interventions", "{{encounter_id}}"]
+            },
+            "description": "The default encounter_id is LOW risk, so it was never seeded with an intervention."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update intervention - invalid status (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DONE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/interventions/{{intervention_encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["interventions", "{{intervention_encounter_id}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update intervention - empty body (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/interventions/{{intervention_encounter_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["interventions", "{{intervention_encounter_id}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Asks for at least one field', () => pm.expect(pm.response.json().detail).to.include('at least one'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Operations",
+      "item": [
+        {
+          "name": "Get operations summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/operations/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["operations", "summary"]
+            },
+            "description": "Headline counts: total encounters, HIGH, MEDIUM, pending reviews."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('Has the four counts', () => {",
+                  "  ['total_encounters', 'high_risk', 'medium_risk', 'pending_reviews'].forEach(k => pm.expect(b[k]).to.be.a('number'));",
+                  "});",
+                  "pm.test('HIGH + MEDIUM do not exceed the total', () => {",
+                  "  pm.expect(b.high_risk + b.medium_risk).to.be.at.most(b.total_encounters);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
